@@ -24,5 +24,5 @@ Use the command palette or the daily note button to create a new daily note with
 
 ## Support
 
-For any issues or feature requests, please open an issue on the [GitHub repository](https://github.com/your-repo).
+For any issues or feature requests, please open an issue on the [GitHub repository](https://github.com/feiteira/obsidian-copy-previous-day-note).
 
