@@ -135,26 +135,27 @@ module.exports = class CopyPreviousDayNotePlugin extends Plugin {
     removeCompletedTasks(content) {
         const lines = content.split('\n');
         const result = [];
-        let skip = false;
-        const taskRegex = /^\s*-\s\[x\]/;
+        let skip = 0;
+		let level = 0;		
+		const taskRegex = /^\s*-\s\[x\]/;
 
         for (let i = 0; i < lines.length; i++) {
-            let line = lines[i];
+            const line = lines[i];
+			level = line.replace(/\t/g, '   ').search(/\S|$/)
 
-            // Replace tabs with 3 spaces
-            line = line.replace(/\t/g, '   ');
+			//console.log(line,"skip =",skip," level = ",level)
 
-            if (taskRegex.test(line)) {
-                skip = true;
+			if (taskRegex.test(line)) {
+                skip = level;
                 console.log('Skipping completed task:', line);
                 continue;
             }
 
-            if (skip && /^\s+-\s/.test(line)) {
+            if (skip > 0 && level > skip) {
                 console.log('Skipping nested task:', line);
                 continue;
             } else {
-                skip = false;
+                skip = 0;
             }
 
             result.push(line);
