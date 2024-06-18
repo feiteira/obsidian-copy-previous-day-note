@@ -143,15 +143,17 @@ module.exports = class CopyPreviousDayNotePlugin extends Plugin {
             const line = lines[i];
 			level = line.replace(/\t/g, '   ').search(/\S|$/)
 
-			//console.log(line,"skip =",skip," level = ",level)
+			console.log(line,"skip =",skip," level = ",level)
 
 			if (taskRegex.test(line)) {
-                skip = level;
+				if(skip == 0 || level < skip){
+					skip = level;
+				}
                 console.log('Skipping completed task:', line);
                 continue;
             }
 
-            if (skip > 0 && level > skip) {
+            if (skip > 0 && level > skip || line.trim()=='') {
                 console.log('Skipping nested task:', line);
                 continue;
             } else {
