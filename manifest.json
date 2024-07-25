@@ -5,6 +5,6 @@
     "minAppVersion": "0.9.12",
     "description": "Copies the previous day's note when creating a new daily note.",
     "author": "José Feiteirinha",
-    "authorUrl": "https://github.com/feiteira/obsidian-copy-previous-day-note",
+    "authorUrl": "https://github.com/feiteira",
     "isDesktopOnly": false
 }
