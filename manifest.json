@@ -1,7 +1,7 @@
 {
     "id": "copy-previous-day-note",
     "name": "Copy Previous Day Note",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "minAppVersion": "0.9.12",
     "description": "Copies the previous day's note when creating a new daily note.",
     "author": "José Feiteirinha",
