@@ -1,8 +1,16 @@
 const { Plugin, PluginSettingTab, Setting, normalizePath } = require('obsidian');
 
 module.exports = class CopyPreviousDayNotePlugin extends Plugin {
+    DEBUG_ENABLED = false;  // Set this to true to enable debug logging
+
+    debug(message) {
+        if (this.DEBUG_ENABLED) {
+            console.log(`[CopyPreviousDayNotePlugin] ${message}`);
+        }
+    }
+
     async onload() {
-        console.log('Copy Previous Day Note plugin loaded');
+        this.debug('Copy Previous Day Note plugin loaded');
 
         // Default configuration
         this.settings = Object.assign({}, { maxDays: 7 });
@@ -16,7 +24,7 @@ module.exports = class CopyPreviousDayNotePlugin extends Plugin {
         // Ensure the daily notes plugin is loaded before overriding the command
         const dailyNotesPlugin = this.app.internalPlugins.getPluginById('daily-notes');
         if (!dailyNotesPlugin) {
-            console.error('Daily Notes plugin is not available');
+            this.debug('Daily Notes plugin is not available');
             return;
         }
 
@@ -30,74 +38,77 @@ module.exports = class CopyPreviousDayNotePlugin extends Plugin {
         const checkCommandExists = () => {
             const originalCommand = this.app.commands.commands['daily-notes'];
             if (!originalCommand) {
-                console.error('Original daily note command not found, retrying...');
+                this.debug('Original daily note command not found, retrying...');
                 setTimeout(checkCommandExists, 100); // Retry after 100ms
                 return;
             }
 
-            console.log('Original daily note command found', originalCommand);
+            this.debug('Original daily note command found');
 
             // Directly override the command's callback
             const newCallback = async () => {
-                console.log('Overridden daily note command executed');
+                this.debug('Overridden daily note command executed');
 
                 const moment = window.moment;
                 const vault = this.app.vault;
-                const dateFormat = dailyNotesPlugin.instance.options.format;
-                const date = moment().format(dateFormat);
+                const { format, folder } = dailyNotesPlugin.instance.options;
+                const date = moment();
 
-                // Get the folder path from the daily notes plugin settings
-                const folderPath = dailyNotesPlugin.instance.options.folder;
-                if (!folderPath) {
-                    console.error('Daily Notes folder is not set in the settings');
-                    return;
-                }
+                // Generate the full path for the new note
+                const fileName = date.format(format) + '.md';
+                const folderPath = this.parseCustomFolderPath(folder, date);
+                const newFilePath = normalizePath(`${folderPath}/${fileName}`);
 
-                const newFilePath = normalizePath(`${folderPath}/${date}.md`);
+                this.debug(`Attempting to create new note at: ${newFilePath}`);
 
-                // Create directories if they don't exist
                 await this.ensureDirectoryExists(newFilePath);
 
-                // Check if the file already exists
                 const existingFile = vault.getAbstractFileByPath(newFilePath);
                 if (existingFile) {
-                    console.log(`File already exists: ${newFilePath}`);
+                    this.debug(`File already exists: ${newFilePath}`);
                     this.app.workspace.openLinkText(newFilePath, '/', false);
                     return;
                 }
 
-                let oldFilePath = '';
                 let oldFileContent = '';
                 let found = false;
 
                 for (let i = 1; i <= this.settings.maxDays; i++) {
-                    const previousDate = moment().subtract(i, 'days').format(dateFormat);
-                    oldFilePath = normalizePath(`${folderPath}/${previousDate}.md`);
+                    const previousDate = moment().subtract(i, 'days');
+                    const prevFileName = previousDate.format(format) + '.md';
+                    const prevFolderPath = this.parseCustomFolderPath(folder, previousDate);
+                    const oldFilePath = normalizePath(`${prevFolderPath}/${prevFileName}`);
+                    
                     const oldFile = vault.getAbstractFileByPath(oldFilePath);
                     if (oldFile) {
                         oldFileContent = await vault.read(oldFile);
-                        console.log(`Old file content read successfully from ${oldFilePath}`);
+                        this.debug(`Old file content read successfully from ${oldFilePath}`);
                         found = true;
                         break;
                     }
                 }
 
+                let newFileContent = '';
                 if (!found) {
-                    console.log(`No previous note found within ${this.settings.maxDays} days. Creating an empty note.`);
-                    await vault.create(newFilePath, '');
+                    this.debug(`No previous note found within ${this.settings.maxDays} days. Creating an empty note.`);
                 } else {
-                    const filteredContent = this.removeCompletedTasks(oldFileContent);
-                    console.log('Filtered content:', filteredContent);
-                    await vault.create(newFilePath, filteredContent);
-                    console.log('New daily note created successfully with filtered content');
+                    newFileContent = this.removeCompletedTasks(oldFileContent);
+                    this.debug('Filtered content created');
                 }
 
-                this.app.workspace.openLinkText(newFilePath, '/', false);
+                try {
+                    await vault.create(newFilePath, newFileContent);
+                    this.debug('New daily note created successfully');
+                    this.app.workspace.openLinkText(newFilePath, '/', false);
+                } catch (error) {
+                    this.debug('Failed to create new daily note: ' + error.message);
+                    // You might want to show an error message to the user here
+                }
             };
 
             this.app.commands.commands['daily-notes'].callback = newCallback;
 
-            console.log('Daily note command overridden successfully');
+            this.debug('Daily note command overridden successfully');
 
             // Re-bind UI elements to use the new command callback
             setTimeout(() => this.rebindDailyNoteButton(newCallback), 1000);
@@ -106,15 +117,39 @@ module.exports = class CopyPreviousDayNotePlugin extends Plugin {
         checkCommandExists();
     }
 
+    parseCustomFolderPath(folderPath, date) {
+        if (!folderPath) return '';
+
+        const dateTokens = ['YYYY', 'YY', 'MM', 'M', 'DD', 'D', 'ddd', 'dddd', 'MMMM', 'MMM'];
+        
+        // Split the path into segments
+        const segments = folderPath.split('/');
+        
+        // Process each segment
+        const processedSegments = segments.map(segment => {
+            // Check if the segment contains any date tokens
+            if (dateTokens.some(token => segment.includes(token))) {
+                // If it does, replace the tokens with formatted date
+                return segment.replace(new RegExp(dateTokens.join('|'), 'g'), match => date.format(match));
+            }
+            // If it doesn't, return the segment as is
+            return segment;
+        });
+
+        // Join the processed segments back into a path
+        return processedSegments.join('/');
+    }
+
     async ensureDirectoryExists(filePath) {
         const vault = this.app.vault;
         const dirPath = filePath.split('/').slice(0, -1).join('/');
 
-        // Check if directory exists
-        const folder = vault.getAbstractFileByPath(dirPath);
-        if (!folder) {
-            await vault.createFolder(dirPath);
-            console.log(`Created directory: ${dirPath}`);
+        if (dirPath && dirPath !== '') {
+            const folderObj = vault.getAbstractFileByPath(dirPath);
+            if (!folderObj) {
+                await vault.createFolder(dirPath);
+                this.debug(`Created directory: ${dirPath}`);
+            }
         }
     }
 
@@ -126,9 +161,9 @@ module.exports = class CopyPreviousDayNotePlugin extends Plugin {
             button.replaceWith(button.cloneNode(true)); // Clone to remove all event listeners
             const newButton = document.querySelector('div.clickable-icon[aria-label="Open today\'s daily note"]');
             newButton.addEventListener('click', newCallback);
-            console.log('Daily note button re-bound to new callback');
+            this.debug('Daily note button re-bound to new callback');
         } else {
-            console.error('Daily note button not found in the UI');
+            this.debug('Daily note button not found in the UI');
         }
     }
 
@@ -136,25 +171,29 @@ module.exports = class CopyPreviousDayNotePlugin extends Plugin {
         const lines = content.split('\n');
         const result = [];
         let skip = 0;
-		let level = 0;		
-		const taskRegex = /^\s*-\s\[x\]/;
+        let level = 0;        
+        const taskRegex = /^\s*[-\*]\s\[x\]/;
 
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
-			level = line.replace(/\t/g, '   ').search(/\S|$/)
+            if(line.trim()==''){//keep the empty lines, but nothing to do
+                result.push(line);            
+                continue;
+            }
+            
+            level = line.replace(/\t/g, '   ').search(/\S/) + 1; // level of first non-white-space character
+            // level is always > 0, so that skip = level means skip > 0
 
-			console.log(line,"skip =",skip," level = ",level)
-
-			if (taskRegex.test(line)) {
-				if(skip == 0 || level < skip){
-					skip = level;
-				}
-                console.log('Skipping completed task:', line);
+            if (taskRegex.test(line)) {
+                if(skip == 0 || level < skip){
+                    skip = level;
+                }
+                this.debug('Skipping completed task: ' + line);
                 continue;
             }
 
-            if (skip > 0 && level > skip || line.trim()=='') {
-                console.log('Skipping nested task:', line);
+            if (skip > 0 && level > skip) {
+                this.debug('Skipping nested task: ' + line);
                 continue;
             } else {
                 skip = 0;
@@ -167,7 +206,7 @@ module.exports = class CopyPreviousDayNotePlugin extends Plugin {
     }
 
     onunload() {
-        console.log('Unloading Copy Previous Day Note plugin');
+        this.debug('Unloading Copy Previous Day Note plugin');
         // Optionally, restore the original command if necessary
     }
 
