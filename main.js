@@ -230,11 +230,11 @@ class CopyPreviousDayNoteSettingTab extends PluginSettingTab {
 
         containerEl.empty();
 
-        containerEl.createEl('h2', { text: 'Settings for Copy Previous Day Note' });
+        containerEl.createEl('b', { text: 'Settings for Copy Previous Day Note' });
 
         new Setting(containerEl)
             .setName('Maximum Days to Look Back')
-            .setDesc('The maximum number of days (up to 30) to look back for a previous note')
+            .setDesc('Maximum number of days (up to 30) to look back for a previous note')
             .addSlider(slider => slider
                 .setLimits(1, 30, 1)
                 .setValue(this.plugin.settings.maxDays)
